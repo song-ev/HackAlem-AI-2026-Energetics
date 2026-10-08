@@ -160,3 +160,26 @@ def test_publication_guard_rejects_private_input_files(tmp_path):
                             capture_output=True, text=True, timeout=20)
     assert result.returncode == 1
     assert 'private-or-local-file' in result.stdout
+
+
+@pytest.mark.parametrize('variant,expected_rule', [
+    ('reviewed', None),
+    ('changed', 'reviewed-binary-changed'),
+    ('unlisted', 'unreviewed-binary'),
+])
+def test_publication_guard_only_accepts_exact_reviewed_screenshot(tmp_path, variant, expected_rule):
+    relative = Path('docs/images/arys-top-125-960x720.png')
+    content = (ROOT / relative).read_bytes()
+    assert content[:8] == b'\x89PNG\r\n\x1a\n'
+    assert int.from_bytes(content[16:20], 'big') == 960
+    assert int.from_bytes(content[20:24], 'big') == 720
+    destination = tmp_path / (relative if variant != 'unlisted' else 'other.png')
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(content + b'unreviewed-change' if variant == 'changed' else content)
+    result = subprocess.run([sys.executable, str(ROOT / 'tools/check_publication.py'), '--root', str(tmp_path)],
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == (1 if expected_rule else 0)
+    if expected_rule:
+        assert expected_rule in result.stdout
+    else:
+        assert 'findings: 0' in result.stdout

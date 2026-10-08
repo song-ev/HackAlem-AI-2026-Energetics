@@ -5,6 +5,7 @@ source directory. This guard complements, but does not replace, Gitleaks and
 manual review. It does not inspect dependencies or authenticate with services.
 """
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -12,6 +13,10 @@ import subprocess
 
 SKIP_DIRS = {'.git', '.venv', '__pycache__', '.pytest_cache', 'output', 'data',
              'artifacts', 'build', 'dist', 'staticfiles', '.ruff_cache', 'htmlcov'}
+# Only this visually reviewed README screenshot is approved. Replacements require review.
+REVIEWED_BINARIES = {
+    'docs/images/arys-top-125-960x720.png': '099fc3e6aa82f37dcd6e36817aea9ca99b69bca95797121b7b34d95689194f4b',
+}
 RULES = {
     'private-key': re.compile(r'-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----'),
     'github-token': re.compile(r'(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})'),
@@ -49,6 +54,10 @@ def scan(root):
             findings.append((relative, 'private-or-local-file'))
         if path.is_symlink():
             findings.append((relative, 'unexpected-symlink'))
+            continue
+        if relative in REVIEWED_BINARIES:
+            if hashlib.sha256(path.read_bytes()).hexdigest() != REVIEWED_BINARIES[relative]:
+                findings.append((relative, 'reviewed-binary-changed'))
             continue
         try:
             content = path.read_text(encoding='utf-8')
